@@ -1,6 +1,0 @@
-{
-  "name": "Z - Generación Libre",
-  "description": "Una red social premium, ultra segura e inclusiva para la Generación Z, con soporte de salud mental por IA (IMEA), chats ordenados, clubes interactivos e historias dinámicas.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
