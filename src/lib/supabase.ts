@@ -5,11 +5,11 @@ let supabaseInstance: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient {
   if (supabaseInstance) return supabaseInstance;
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = "https://tgscziwfhmkkcswjsibs.supabase.co";
+  const supabaseAnonKey = "sb_publishable_pNp-OpuwzRXFcUnTQGd69g_-Ogm3UfX";
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase credentials missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.");
+    throw new Error("Supabase credentials missing.");
   }
 
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);

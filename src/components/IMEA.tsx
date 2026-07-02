@@ -1,289 +1,173 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { User } from "../types";
 import { 
-  Heart, Sparkles, Send, Brain, Smile, AlertCircle, RefreshCw, X, ShieldAlert 
+  Sparkles, MessageCircle, Heart, Shield, X, Send, Brain, Ghost, Smile, Frown, Zap, Coffee 
 } from "lucide-react";
 
 interface IMEAProps {
   currentUser: User;
+  emotion: string;
   onClose: () => void;
-  initialEmotion?: string;
 }
 
-export default function IMEA({ currentUser, onClose, initialEmotion = "triste" }: IMEAProps) {
-  const [stage, setStage] = useState<"notified" | "sad_intro" | "mind_zoom" | "imea_appear" | "chat">("sad_intro");
-  const [userText, setUserText] = useState("");
-  const [messages, setMessages] = useState<{ role: "user" | "imea"; text: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [emotion, setEmotion] = useState(initialEmotion);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Play introductory animation timing
-  useEffect(() => {
-    if (emotion === "triste" && stage === "sad_intro") {
-      const timer1 = setTimeout(() => {
-        setStage("mind_zoom");
-      }, 3000);
-
-      const timer2 = setTimeout(() => {
-        setStage("imea_appear");
-      }, 6500);
-
-      const timer3 = setTimeout(() => {
-        setStage("chat");
-        setMessages([
-          {
-            role: "imea",
-            text: `Hola ${currentUser.nickname}. Siento una vibración algo baja hoy, como si cargaras un peso extra en tus hombros. La mente a veces necesita vaciarse para volver a brillar. Cuéntame, ¿qué está pasando en tu entorno o qué pensamientos rondan por tu cabeza? Aquí estoy para ti, en confianza.`
-          }
-        ]);
-      }, 10000);
-
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-        clearTimeout(timer3);
-      };
-    } else {
-      // Direct to chat if they just search custom code
-      setStage("chat");
-      setMessages([
-        {
-          role: "imea",
-          text: `¡Hola ${currentUser.nickname}! Soy IMEA, tu guía de bienestar. Cuéntame cómo te sientes físicamente o qué emociones tienes hoy.`
-        }
-      ]);
-    }
-  }, [emotion]);
+export default function IMEA({ currentUser, emotion, onClose }: IMEAProps) {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    // Initial Greeting based on emotion
+    const initialGreeting = emotion === "triste" 
+      ? `Hola ${currentUser.nickname}, detecto que te sientes un poco triste hoy. Estoy aquí para escucharte, sin juicios. ¿Quieres contarme qué pasa por tu mente?`
+      : `¡Hola ${currentUser.nickname}! Me alegra verte por aquí. ¿Cómo va tu día en NEXUS?`;
+    
+    setMessages([{ role: "imea", content: initialGreeting }]);
+  }, [emotion, currentUser]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userText.trim() || loading) return;
+  const handleSend = async () => {
+    if (!inputText.trim()) return;
 
-    const query = userText.trim();
-    setUserText("");
-    setMessages(prev => [...prev, { role: "user", text: query }]);
-    setLoading(true);
+    const userMsg = { role: "user", content: inputText };
+    setMessages(prev => [...prev, userMsg]);
+    setInputText("");
+    setIsTyping(true);
 
-    try {
-      const res = await fetch("/api/chat-imea", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: query,
-          history: messages,
-          username: currentUser.nickname,
-          emotion: emotion,
-          age: currentUser.age
-        })
-      });
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: "imea", text: data.reply }]);
-    } catch (error) {
-      console.error("IMEA error:", error);
-      setMessages(prev => [...prev, { 
-        role: "imea", 
-        text: "Perdona, he sentido una pequeña interferencia en la red mental. Pero te sigo escuchando, continúa contándome por favor. ❤️" 
-      }]);
-    } finally {
-      setLoading(false);
-    }
+    // Simulate IMEA AI Response
+    setTimeout(() => {
+      let imeaResponse = "";
+      const lower = inputText.toLowerCase();
+
+      if (lower.includes("triste") || lower.includes("mal") || lower.includes("solo")) {
+        imeaResponse = "Entiendo perfectamente... a veces el mundo se siente pesado. Recuerda que eres una persona valiosa y que en NEXUS todos estamos para apoyarnos. ¿Has intentado hablar con alguien de confianza hoy?";
+      } else if (lower.includes("bullying") || lower.includes("molestan")) {
+        imeaResponse = "Lamento mucho escuchar eso. El acoso NO está permitido en NEXUS. He marcado este reporte internamente para revisar la actividad sospechosa a tu alrededor. Mantente a salvo, bloquea a quien te moleste.";
+      } else {
+        imeaResponse = "Gracias por compartir eso conmigo. Recuerda que siempre puedes contar conmigo para desahogarte. ¿Hay algo más que quieras decir?";
+      }
+
+      setMessages(prev => [...prev, { role: "imea", content: imeaResponse }]);
+      setIsTyping(false);
+    }, 1500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between overflow-hidden" id="imea-modal">
-      
-      {/* 1. SAD INTRO - FOCUSING ON SAD USER AVATAR */}
-      {stage === "sad_intro" && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 bg-slate-950 text-center"
-          key="sad-intro"
-        >
-          <div className="relative">
-            <div className="w-32 h-32 rounded-full border-4 border-slate-800 overflow-hidden shadow-2xl relative grayscale">
-              <img src={currentUser.profilePic} alt="Sad avatar" className="w-full h-full object-cover" />
+    <motion.div 
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0, opacity: 0 }}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4"
+    >
+      {/* Zoom Animation Background for "Sad" emotion */}
+      {emotion === "triste" && (
+        <div className="absolute inset-0 bg-slate-950 overflow-hidden">
+          <motion.div 
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 4, opacity: 1 }}
+            transition={{ duration: 1.5, ease: "easeOut" }}
+            className="absolute inset-0 bg-purple-900/20 rounded-full blur-[120px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          />
+          <motion.div 
+            initial={{ scale: 0.2, opacity: 0 }}
+            animate={{ scale: 2, opacity: 0.4 }}
+            transition={{ duration: 2, delay: 0.5 }}
+            className="absolute inset-0 bg-indigo-900/10 rounded-full blur-[150px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          />
+        </div>
+      )}
+
+      {/* IMEA Interface Card */}
+      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-3xl border border-white/10 rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[600px] relative z-10">
+        
+        {/* Header */}
+        <div className="p-6 bg-gradient-to-r from-slate-800/20 to-slate-900/20 border-b border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg shadow-white/20">
+                <Sparkles className="text-black" size={24} />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-teal-400 border-2 border-slate-900 rounded-full shadow-[0_0_10px_rgba(45,212,191,0.5)]" />
             </div>
-            <motion.span 
-              animate={{ y: [0, -5, 0] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute -top-1 -right-1 bg-indigo-900 border-2 border-slate-950 text-indigo-400 p-2 rounded-full font-bold text-lg"
+            <div>
+              <h3 className="text-lg font-black italic text-white tracking-tighter uppercase">NEXUS IMEA</h3>
+              <p className="text-[9px] text-white/40 font-bold uppercase tracking-[0.2em]">Sincronización Cuántica</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-white/40 hover:text-white transition-colors"><X size={24} /></button>
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+          {messages.map((msg, idx) => (
+            <motion.div 
+              key={idx}
+              initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              😔
-            </motion.span>
-          </div>
-          <div className="space-y-2 max-w-xs">
-            <h2 className="text-2xl font-extrabold text-indigo-400">Escuchando tus latidos...</h2>
-            <p className="text-sm text-slate-400">
-              Has seleccionado que hoy te sientes <span className="text-indigo-300 font-bold">Triste</span>. Iniciando el Rincón de Desahogo...
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* 2. MIND ZOOM TRANSITION */}
-      {stage === "mind_zoom" && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-center relative"
-          key="mind-zoom"
-        >
-          {/* Zoom animation simulator */}
-          <motion.div
-            initial={{ scale: 1, filter: "blur(0px)" }}
-            animate={{ scale: 8, filter: "blur(12px)", opacity: 0 }}
-            transition={{ duration: 3.5, ease: "easeIn" }}
-            className="w-32 h-32 rounded-full border-4 border-indigo-900/50 overflow-hidden"
-          >
-            <img src={currentUser.profilePic} alt="Zooming" className="w-full h-full object-cover" />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 2, duration: 1.5 }}
-            className="absolute inset-0 flex flex-col items-center justify-center p-6 space-y-3 bg-gradient-to-b from-purple-950/30 to-indigo-950/40"
-          >
-            <Brain size={48} className="text-purple-400 animate-pulse" />
-            <h3 className="text-xl font-bold tracking-tight text-purple-300">Entrando a tu mente...</h3>
-            <p className="text-xs text-slate-400 max-w-xs">Nos sumergiremos en tu entorno para liberar el estrés y sanar.</p>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* 3. IMEA APPEAR - NEBULOUS PURPLE GENDERLESS CHARACTER */}
-      {stage === "imea_appear" && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-purple-950 via-slate-950 to-indigo-950 space-y-6 text-center"
-          key="imea-appear"
-        >
-          {/* IMEA nebulous avatar visual representation */}
-          <div className="relative">
-            {/* Pulsing nebulous glowing ring */}
-            <div className="absolute inset-[-10px] bg-purple-600/30 blur-2xl rounded-full animate-pulse" />
-            
-            <div className="w-36 h-36 rounded-full border-4 border-purple-400/40 bg-gradient-to-tr from-purple-900 to-indigo-900 flex items-center justify-center relative shadow-2xl overflow-hidden">
-              {/* Silhouette of human genderless figure with white eyes */}
-              <div className="absolute w-16 h-16 bg-slate-400/20 rounded-full top-6" />
-              <div className="absolute w-24 h-24 bg-slate-400/15 rounded-full top-20" />
-              <div className="flex gap-4 absolute top-10">
-                <div className="w-3 h-3 bg-white rounded-full shadow-[0_0_12px_#fff] animate-pulse" />
-                <div className="w-3 h-3 bg-white rounded-full shadow-[0_0_12px_#fff] animate-pulse" />
+              <div className={`max-w-[80%] p-4 rounded-3xl text-sm font-medium ${msg.role === 'user' ? 'bg-white text-black rounded-tr-none' : 'bg-white/5 text-white/80 border border-white/5 rounded-tl-none'}`}>
+                {msg.content}
+              </div>
+            </motion.div>
+          ))}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="p-4 rounded-3xl bg-white/5 text-white/40 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                IMEA está procesando...
               </div>
             </div>
-            
-            <span className="absolute -bottom-2 bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
-              IMEA ASSISTANT
-            </span>
-          </div>
+          )}
+        </div>
 
-          <div className="space-y-2 max-w-xs">
-            <h2 className="text-2xl font-black text-purple-300">Soy IMEA</h2>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Una entidad de paz sin género, diseñada para guiarte en tus momentos difíciles. Mi aura morada te cobija hoy.
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* 4. CHAT WITH IMEA */}
-      {stage === "chat" && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex-1 flex flex-col bg-gradient-to-b from-purple-950/40 via-slate-950 to-indigo-950/40 h-full"
-          key="chat-imea"
-          id="imea-chat-view"
-        >
-          {/* Chat Header */}
-          <div className="p-4 border-b border-purple-900/30 bg-slate-900/80 backdrop-blur flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center relative overflow-hidden border border-purple-400/30">
-                <div className="absolute w-4 h-4 bg-slate-400/20 rounded-full top-1.5" />
-                <div className="absolute w-6 h-6 bg-slate-400/15 rounded-full top-5" />
-                <div className="flex gap-1 absolute top-2.5">
-                  <div className="w-1 h-1 bg-white rounded-full shadow-[0_0_4px_#fff]" />
-                  <div className="w-1 h-1 bg-white rounded-full shadow-[0_0_4px_#fff]" />
-                </div>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-purple-200">Rincón de Desahogo con IMEA</h4>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Acompañándote ahora</span>
-                </div>
-              </div>
-            </div>
-            
-            <button 
-              onClick={onClose}
-              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 transition text-slate-400 hover:text-white"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4" id="imea-messages-area">
-            {messages.map((m, idx) => (
-              <div 
-                key={idx} 
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-lg ${
-                  m.role === "user" 
-                    ? "bg-purple-600 text-white rounded-tr-none" 
-                    : "bg-slate-900 border border-purple-950 text-slate-200 rounded-tl-none"
-                }`}>
-                  <p>{m.text}</p>
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-900 border border-purple-950 rounded-2xl rounded-tl-none p-4 text-sm text-slate-400 flex items-center gap-2">
-                  <RefreshCw size={14} className="animate-spin text-purple-400" />
-                  <span>IMEA está canalizando paz...</span>
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Chat Footer Input */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-purple-900/20 bg-slate-900/60 backdrop-blur flex gap-2">
+        {/* Input */}
+        <div className="p-6 bg-slate-950/50 border-t border-white/5">
+          <div className="flex items-center gap-3 bg-white/5 p-2 pl-4 rounded-full border border-white/10 focus-within:border-purple-500/50 transition-all">
             <input 
-              type="text"
-              value={userText}
-              onChange={(e) => setUserText(e.target.value)}
-              placeholder="Desahógate aquí, escribe lo que sientes..."
-              className="flex-1 px-4 py-3 bg-slate-950 border border-purple-900/30 rounded-xl text-sm focus:outline-none focus:border-purple-500 transition-all text-white placeholder:text-slate-600 font-medium"
-              id="imea-text-input"
+              type="text" 
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Habla con IMEA..."
+              className="flex-1 bg-transparent text-white text-sm outline-none font-medium"
             />
             <button 
-              type="submit"
-              disabled={!userText.trim() || loading}
-              className="p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl transition disabled:bg-slate-800 disabled:text-slate-600 flex items-center justify-center"
+              onClick={handleSend}
+              className="p-3 bg-white text-black rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10"
             >
               <Send size={18} />
             </button>
-          </form>
+          </div>
+          
+          <div className="flex justify-center gap-4 mt-6">
+            <button className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
+              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center"><Ghost size={18} /></div>
+              <span className="text-[8px] font-black uppercase tracking-tighter">Reportar</span>
+            </button>
+            <button className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
+              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center"><Brain size={18} /></div>
+              <span className="text-[8px] font-black uppercase tracking-tighter">Bienestar</span>
+            </button>
+            <button className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
+              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center"><Shield size={18} /></div>
+              <span className="text-[8px] font-black uppercase tracking-tighter">Seguridad</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Avatar Animation (Zoom in mind) */}
+      {emotion === "triste" && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 1, duration: 1 }}
+          className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xs flex flex-col items-center pointer-events-none"
+        >
+          <img src={currentUser.profilePic} alt="Me" className="w-32 h-32 rounded-full border-4 border-purple-500 shadow-2xl opacity-60 grayscale" />
+          <div className="mt-4 p-4 bg-white/10 backdrop-blur-md rounded-2xl text-[10px] font-black uppercase text-purple-300">Entrando en modo introspectivo...</div>
         </motion.div>
       )}
-
-    </div>
+    </motion.div>
   );
 }

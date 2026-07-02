@@ -8,14 +8,14 @@ function getFirebaseApp(): FirebaseApp {
   if (appInstance) return appInstance;
 
   const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
-    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+    apiKey: "AIzaSyCwjeLijCB4-HfFbJjHrpfocJ5mn39pat0",
+    authDomain: "nexusapp-c0a21.firebaseapp.com",
+    databaseURL: "https://nexusapp-c0a21-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "nexusapp-c0a21",
+    storageBucket: "nexusapp-c0a21.firebasestorage.app",
+    messagingSenderId: "487113661451",
+    appId: "1:487113661451:web:1774402530bfd189c6fb0e",
+    measurementId: "G-TQ7GDCG5QX"
   };
 
   if (!firebaseConfig.apiKey) {

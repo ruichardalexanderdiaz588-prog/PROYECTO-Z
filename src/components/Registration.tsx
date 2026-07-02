@@ -2,18 +2,44 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { User } from "../types";
 import { 
-  Heart, AlertTriangle, ShieldCheck, CheckCircle2, UserCheck, Eye, EyeOff, 
-  Sparkles, Camera, Image as ImageIcon, Smile, ArrowRight, ArrowLeft, HeartHandshake, HelpCircle 
+  Sparkles, Camera, Image as ImageIcon, Smile, ArrowRight, ArrowLeft, HeartHandshake, HelpCircle, Shield, AlertTriangle, Heart, User as UserIcon 
 } from "lucide-react";
 
-import { getFirebaseAuth, googleProvider } from "../lib/firebase";
-import { signInWithPopup } from "firebase/auth";
+import { 
+  getFirebaseAuth, googleProvider 
+} from "../lib/firebase";
+import { 
+  signInWithPopup, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword 
+} from "firebase/auth";
 import { getSupabase } from "../lib/supabase";
 
 interface RegistrationProps {
   onRegisterComplete: (user: User) => void;
   onLoginSuccess: (user: User) => void;
 }
+
+const ORIENTATIONS = [
+  "Hetero", "Gay pasivo", "Gay versátil", "Gay activo", "Lesbiana", "Bisexual", 
+  "Pansexual", "Hombre trans", "Mujer trans", "Asexual", "Intersexual", "No binario", "Queer"
+];
+
+const ORIENTATION_MESSAGES: Record<string, string> = {
+  "Hetero": "¡Bienvenido! Aquí celebramos la diversidad y el respeto mutuo.",
+  "Gay pasivo": "Tu autenticidad es tu fuerza. ¡Estamos felices de tenerte!",
+  "Gay versátil": "Libertad y orgullo. Aquí puedes ser tú mismo sin juicios.",
+  "Gay activo": "Eres valiente al mostrarte tal cual eres. ¡Bienvenido a la comunidad!",
+  "Lesbiana": "Amor es amor. Celebramos tu identidad y tu camino.",
+  "Bisexual": "La fluidez es parte de la belleza humana. ¡Bienvenido!",
+  "Pansexual": "Tu capacidad de amar sin fronteras es inspiradora.",
+  "Hombre trans": "Reconocemos tu transición y tu verdadera esencia con respeto.",
+  "Mujer trans": "Tu identidad es válida y hermosa. ¡Z App es tu espacio seguro!",
+  "Asexual": "La identidad asexual es una parte vital de nuestro espectro. ¡Bienvenido!",
+  "Intersexual": "La diversidad biológica y de identidad nos hace más fuertes.",
+  "No binario": "Más allá de las etiquetas, estamos aquí para escucharte.",
+  "Queer": "Celebramos tu perspectiva única y tu libertad de ser."
+};
 
 export default function Registration({ onRegisterComplete, onLoginSuccess }: RegistrationProps) {
   // Navigation states
@@ -25,162 +51,81 @@ export default function Registration({ onRegisterComplete, onLoginSuccess }: Reg
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [nickname, setNickname] = useState("");
   const [usernameInput, setUsernameInput] = useState("");
-  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [birthDate, setBirthDate] = useState("");
   const [calculatedAge, setCalculatedAge] = useState<number | null>(null);
-  const [adultMonitoringOption, setAdultMonitoringOption] = useState<"parent" | "aimea" | null>(null);
   const [orientation, setOrientation] = useState("");
   const [isOrientationPublic, setIsOrientationPublic] = useState(true);
+  const [adultMonitoringOption, setAdultMonitoringOption] = useState<"parent" | "ai" | null>(null);
   const [hobbies, setHobbies] = useState<string[]>([]);
-  const [customHobby, setCustomHobby] = useState("");
-  const [showCustomHobbyInput, setShowCustomHobbyInput] = useState(false);
   const [isHobbiesPublic, setIsHobbiesPublic] = useState(true);
-  const [avatarOption, setAvatarOption] = useState<"gallery" | "avatar">("avatar");
-  const [selectedAvatarPic, setSelectedAvatarPic] = useState("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80");
-  const [isPicVerified, setIsPicVerified] = useState(true);
-  const [verifyingPic, setVerifyingPic] = useState(false);
+  const [bio, setBio] = useState("");
+  const [profilePic, setProfilePic] = useState("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80");
+  
+  // Auth states
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState(""); // Email or username
+  const [loginPassword, setLoginPassword] = useState("");
 
-  // Camera Verification State
-  const [camCountdown, setCamCountdown] = useState<number | null>(null);
-  const [isCamActive, setIsCamActive] = useState(false);
-  const [camSuccess, setCamSuccess] = useState<boolean | null>(null);
-  const [camErrorMsg, setCamErrorMsg] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraCountdown, setCameraCountdown] = useState(0);
 
-  // Login inputs
-  const [loginUsername, setLoginUsername] = useState("");
-
-  // Empowering username message list
-  const usernameMessages = [
-    "¡Bonito nombre, de seguro algunas personas lo tienen les parecerá hermoso!",
-    "¡Ese nombre tiene una energía increíble! Definitivamente destacarás.",
-    "¡Estiloso y único! Te define perfectamente.",
-    "¡Brillante! Un nombre digno de un alma libre.",
-    "¡Nos encanta! Suena fresco y moderno."
+  // STEP MESSAGES
+  const WELCOME_MESSAGES = [
+    "¡Bonito nombre, de seguro algunas personas les parecerá bonito!",
+    "¡Qué nombre tan genial! Irradia mucha energía positiva.",
+    "Un nombre digno de un alma libre. ¡Me encanta!",
+    "¡Excelente elección! Ese nombre suena muy bien en NEXUS."
   ];
-  const [selectedUsernameMsg, setSelectedUsernameMsg] = useState("");
+  const [randomWelcome, setRandomWelcome] = useState("");
 
   useEffect(() => {
-    setSelectedUsernameMsg(usernameMessages[Math.floor(Math.random() * usernameMessages.length)]);
-  }, [step === 2]);
+    setRandomWelcome(WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)]);
+  }, [step]);
 
-  // Handle Age calculation
-  const handleDateChange = (dateStr: string) => {
-    setBirthDate(dateStr);
-    if (!dateStr) {
-      setCalculatedAge(null);
-      return;
-    }
-    const today = new Date();
-    const birth = new Date(dateStr);
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    setCalculatedAge(age);
-  };
-
-  // Simulated AI Verification of avatar or selected image
-  const verifyImageSafety = () => {
-    setVerifyingPic(true);
-    setTimeout(() => {
-      setVerifyingPic(false);
-      setIsPicVerified(true);
-    }, 1500);
-  };
-
-  // Launch simulated camera age confirmation
-  const startCameraScan = async () => {
-    setIsCamActive(true);
-    setCamCountdown(10);
-    setCamSuccess(null);
-    setCamErrorMsg("");
-
-    // Try to get real webcam stream if available (since metadata says requested camera permission)
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      console.log("No real camera available, using cool interactive visual simulation");
-    }
-  };
-
+  // Age calculation
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isCamActive && camCountdown !== null && camCountdown > 0) {
-      timer = setTimeout(() => setCamCountdown(camCountdown - 1), 1000);
-    } else if (isCamActive && camCountdown === 0) {
-      // Analyze facial age match simulation
-      const ageIsAdult = (calculatedAge || 0) >= 18;
-      // In a real device we scan. Here we simulate successful verification:
-      setCamSuccess(true);
-      // Clean up webcam stream
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
+    if (birthDate) {
+      const birth = new Date(birthDate);
+      const today = new Date();
+      let age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        age--;
       }
-      setIsCamActive(false);
+      setCalculatedAge(age);
+      
+      if (age < 13 && age > 0) {
+        alert("Por tu seguridad, no puedes entrar a esta app, debes tener al menos 13 años. Te sugerimos que uses YouTube Kids.");
+        setBirthDate("");
+        setCalculatedAge(null);
+      }
     }
-    return () => clearTimeout(timer);
-  }, [isCamActive, camCountdown]);
+  }, [birthDate]);
 
-  // Orientation feedback messages
-  const getOrientationMsg = (or: string) => {
-    switch (or) {
-      case "Gay pasivo":
-      case "Gay activo":
-      case "Gay versátil":
-        return "¡Aquí eres libre de ser tú mismo y te rodearemos de orgullo y hermandad! 🌈";
-      case "Lesbiana":
-        return "¡Orgullo de ser quien eres, en un ambiente libre de odio y lleno de sororidad! 💕";
-      case "Bisexual":
-      case "Pansexual":
-        return "¡Tu capacidad de amar sin barreras es hermosa y totalmente bienvenida aquí! ❤️‍🔥";
-      case "Hombre trans":
-      case "Mujer trans":
-        return "¡Tu valentía, identidad y transición son respetadas y celebradas! Fuerza y amor trans. 🏳️‍⚧️";
-      case "No binario":
-      case "Queer":
-        return "¡Más allá de las etiquetas tradicionales, brillas con luz propia en este universo! 🌌";
-      default:
-        return "¡Todas las identidades y orientaciones son amadas y respetadas aquí! Siente la libertad. 🕊️";
-    }
+  const startCameraVerification = () => {
+    setCameraActive(true);
+    setCameraCountdown(10);
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    });
+
+    const timer = setInterval(() => {
+      setCameraCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setCameraActive(false);
+          if (videoRef.current?.srcObject) {
+            (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+          }
+          setStep(step + 1);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
-
-  const goalsList = [
-    { id: "amistad", label: "Hacer amistades verdaderas 🤝" },
-    { id: "relacion", label: "Buscar una relación sentimental 💖" },
-    { id: "ayuda", label: "Apoyo emocional y desahogo 🫂" },
-    { id: "videos", label: "Ver videos graciosos y memes 🎬" },
-    { id: "creativos", label: "Mostrar mi arte y creatividad 🎨" },
-    { id: "historias", label: "Leer y escribir historias reales 📖" }
-  ];
-
-  const orientationList = [
-    "Hetero", "Gay pasivo", "Gay versátil", "Gay activo", "Lesbiana", 
-    "Bisexual", "Pansexual", "Hombre trans", "Mujer trans", "Asexual", 
-    "Intersexual", "No binario", "Queer"
-  ];
-
-  const standardHobbies = [
-    "Crear historias", "Ver series y películas", "Regar plantas", "Escribir", "Leer",
-    "Ayudar personas", "Trabajar", "Jugar al aire libre", "Estudiar", "Comer",
-    "Hacer ejercicio", "Limpiar", "Escuchar Música", "Ver TikTok", "Redes sociales"
-  ];
-
-  const avatars = [
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80"
-  ];
 
   const handleGoogleLogin = async () => {
     if (!acceptedTerms) {
@@ -192,8 +137,7 @@ export default function Registration({ onRegisterComplete, onLoginSuccess }: Reg
       const result = await signInWithPopup(getFirebaseAuth(), googleProvider);
       const fbUser = result.user;
 
-      // Check if user exists in Supabase
-      const { data: existingUser, error } = await getSupabase()
+      const { data: existingUser } = await getSupabase()
         .from("users")
         .select("*")
         .eq("email", fbUser.email)
@@ -202,33 +146,10 @@ export default function Registration({ onRegisterComplete, onLoginSuccess }: Reg
       if (existingUser) {
         onLoginSuccess(existingUser as User);
       } else {
-        // Create new user in Supabase
-        const newUser: User = {
-          id: fbUser.uid,
-          username: fbUser.email?.split("@")[0] || `user_${Date.now()}`,
-          nickname: fbUser.displayName || "Usuario Z",
-          email: fbUser.email || "",
-          birthDate: "",
-          age: 0,
-          orientation: "Prefiero no decirlo",
-          isOrientationPublic: true,
-          profilePic: fbUser.photoURL || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-          bio: "¡Hola! Me acabo de unir a Z App.",
-          isAdult: false,
-          isParentMonitored: false,
-          hobbies: [],
-          isHobbiesPublic: true,
-          points: 100,
-          isSuspended: false,
-          bannedMultiaccounts: false,
-          unlockedSkins: ["standard"],
-          followers: [],
-          following: []
-        };
-
-        const { error: insertError } = await getSupabase().from("users").insert([newUser]);
-        if (insertError) throw insertError;
-        onRegisterComplete(newUser);
+        // New user from Google -> Onboarding
+        setNickname(fbUser.displayName || "");
+        setEmail(fbUser.email || "");
+        setStep(10); // Start the onboarding steps (Friendly nickname step)
       }
     } catch (error: any) {
       console.error("Error with Google Login:", error);
@@ -238,940 +159,587 @@ export default function Registration({ onRegisterComplete, onLoginSuccess }: Reg
     }
   };
 
-  // Submission handler
   const handleFinalizeRegister = async () => {
-    if (!nickname || !usernameInput || !birthDate) return;
+    if (!nickname || !calculatedAge) return;
 
-    const finalAge = calculatedAge || 15;
-    if (finalAge < 13) return;
-
-    const isAdult = finalAge >= 18;
-
-    const newUser: User = {
-      id: "user_" + Date.now(),
-      username: usernameInput.toLowerCase().replace(/\s+/g, "_"),
-      nickname: nickname,
-      birthDate: birthDate,
-      age: finalAge,
-      orientation: orientation || "Prefiero no decirlo",
-      isOrientationPublic: isOrientationPublic,
-      profilePic: selectedAvatarPic,
-      bio: `¡Hola! Me acabo de unir a Z App. Me apasiona: ${hobbies.join(", ")}.`,
-      isAdult: isAdult,
-      isParentMonitored: adultMonitoringOption === "parent",
-      hobbies: hobbies,
-      isHobbiesPublic: isHobbiesPublic,
+    const isAdult = (calculatedAge || 0) >= 18;
+    const userData = {
+      id: getFirebaseAuth().currentUser?.uid || "user_" + Date.now(),
+      username: usernameInput || "user_" + Date.now(),
+      nickname,
+      email: getFirebaseAuth().currentUser?.email || "",
+      birth_date: birthDate,
+      age: calculatedAge,
+      orientation,
+      is_orientation_public: isOrientationPublic,
+      profile_pic: profilePic,
+      bio,
+      is_adult: isAdult,
+      is_parent_monitored: adultMonitoringOption === "parent",
+      hobbies,
+      is_hobbies_public: isHobbiesPublic,
       points: 100,
-      isSuspended: false,
-      bannedMultiaccounts: false,
-      unlockedSkins: ["standard"],
+      is_suspended: false,
+      banned_multiaccounts: false,
+      unlocked_skins: ["standard"],
       followers: [],
       following: []
     };
 
-    setStep(8);
+    setStep(9); 
     
-    // Save to Supabase
-    const { error } = await getSupabase().from("users").insert([newUser]);
-    if (error) {
-      console.error("Error saving user to Supabase:", error);
-      alert("Error al guardar el usuario en la base de datos.");
-      setStep(7);
-      return;
-    }
+    try {
+      const { error } = await getSupabase().from("users").upsert([userData]);
+      if (error) throw error;
+      
+      const newUser: User = {
+        id: userData.id,
+        username: userData.username,
+        nickname: userData.nickname,
+        email: userData.email,
+        birthDate: userData.birth_date,
+        age: userData.age,
+        orientation: userData.orientation,
+        isOrientationPublic: userData.is_orientation_public,
+        profilePic: userData.profile_pic,
+        bio: userData.bio,
+        isAdult: userData.is_adult,
+        isParentMonitored: userData.is_parent_monitored,
+        hobbies: userData.hobbies,
+        isHobbiesPublic: userData.is_hobbies_public,
+        points: userData.points,
+        isSuspended: userData.is_suspended,
+        bannedMultiaccounts: userData.banned_multiaccounts,
+        unlockedSkins: userData.unlocked_skins,
+        followers: userData.followers,
+        following: userData.following
+      };
 
-    setTimeout(() => {
-      onRegisterComplete(newUser);
-    }, 4000);
+      setTimeout(() => {
+        onRegisterComplete(newUser);
+      }, 3000);
+    } catch (err) {
+      console.error("Error saving to Supabase:", err);
+      alert("Error al crear cuenta.");
+      setStep(7);
+    }
   };
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loginUsername) return;
+  const handleEmailRegister = async () => {
+    if (!email || !password) {
+      alert("Por favor completa los campos.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+      setStep(10); // Start onboarding
+    } catch (error: any) {
+      console.error("Error with Email Register:", error);
+      alert("Error al crear cuenta: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!loginIdentifier || !loginPassword) return;
     setLoading(true);
 
-    const { data, error } = await getSupabase()
-      .from("users")
-      .select("*")
-      .or(`username.eq.${loginUsername.trim()},email.eq.${loginUsername.trim()}`)
-      .single();
+    try {
+      let emailToUse = loginIdentifier;
+      if (!loginIdentifier.includes('@')) {
+        const { data } = await getSupabase()
+          .from("users")
+          .select("email")
+          .eq("username", loginIdentifier)
+          .single();
+        if (data?.email) {
+          emailToUse = data.email;
+        }
+      }
 
-    if (data) {
-      onLoginSuccess(data as User);
-    } else {
-      alert("Usuario no encontrado.");
+      const result = await signInWithEmailAndPassword(getFirebaseAuth(), emailToUse, loginPassword);
+      
+      const { data: user } = await getSupabase()
+        .from("users")
+        .select("*")
+        .eq("id", result.user.uid)
+        .single();
+
+      if (user) {
+        onLoginSuccess(user as User);
+      } else {
+        alert("Usuario no encontrado en la base de datos de NEXUS.");
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+        alert("Login error:\nFirebase: Error (auth/invalid-credential).");
+      } else if (err.code === "auth/unauthorized-domain") {
+        alert("Error with Google Login:\nFirebase: Error (auth/unauthorized-domain).");
+      } else {
+        alert("Error al iniciar sesión: " + err.message);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between items-center p-6 relative overflow-hidden" id="registration-container">
-      {/* Background radial effects */}
-      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-indigo-900/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-fuchsia-900/20 blur-[120px] pointer-events-none" />
-
-      {/* Header */}
-      <div className="w-full max-w-md flex justify-between items-center pt-2 z-10" id="reg-header">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-fuchsia-600 via-purple-600 to-indigo-600 flex items-center justify-center font-black text-2xl tracking-tighter shadow-[0_0_20px_rgba(168,85,247,0.4)] animate-pulse">
-            Z
-          </div>
-          <span className="font-extrabold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-400 to-indigo-400">
-            Generación Libre
-          </span>
-        </div>
-        {step > 0 && step < 8 && (
-          <button 
-            onClick={() => setStep(step - 1)}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 transition text-slate-400 hover:text-white"
-            id="btn-back"
-          >
-            <ArrowLeft size={18} />
-          </button>
-        )}
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 overflow-hidden relative font-sans">
+      
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 opacity-40">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-teal-500/5 rounded-full blur-[150px]" />
       </div>
 
-      {/* Main Container */}
-      <div className="w-full max-w-md flex-1 flex flex-col justify-center my-8 z-10" id="reg-main-card">
-        <AnimatePresence mode="wait">
-          
-          {/* STEP 0: Welcome / Authentication Type Choice */}
-          {step === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: opacity => 0, y: -20 }}
-              className="space-y-6"
-              key="step-0"
-              id="step-welcome"
-            >
-              <div className="text-center space-y-2">
-                <span className="px-3 py-1 bg-fuchsia-500/10 text-fuchsia-400 text-xs font-bold rounded-full tracking-wider border border-fuchsia-500/20 uppercase">
-                  Libertad • Inclusión • Seguridad
-                </span>
-                <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-200 to-slate-400">
-                  {isLoginMode ? "¡Hola de nuevo, alma libre!" : "Tu espacio, sin máscaras."}
-                </h1>
-                <p className="text-slate-400 text-sm">
-                  {isLoginMode ? "Ingresa para conectar con tu gente de forma ultra segura." : "Una red para expresarte, hacer amigos reales, hablar de tus emociones y divertirte sin hate."}
-                </p>
+      <AnimatePresence mode="wait">
+        {step === 0 && (
+          <motion.div key="step0" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-md space-y-8 text-center">
+            <div className="space-y-2">
+              <h1 className="text-6xl font-black text-white italic tracking-tighter">NEXUS</h1>
+              <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em]">Red de Almas Libres</p>
+            </div>
+            
+            <div className="bg-white/5 border border-white/10 p-8 rounded-[40px] space-y-6 backdrop-blur-xl">
+              <button 
+                onClick={handleGoogleLogin}
+                className="w-full flex items-center justify-center gap-3 bg-white text-black p-5 rounded-[24px] font-black uppercase tracking-widest hover:bg-white/90 transition-all active:scale-95 shadow-xl shadow-white/5"
+              >
+                <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+                Continuar con Google
+              </button>
+              
+              <div className="flex items-center gap-4 py-2">
+                <div className="h-[1px] flex-1 bg-white/10" />
+                <span className="text-white/20 text-[10px] font-black uppercase">o acceso manual</span>
+                <div className="h-[1px] flex-1 bg-white/10" />
               </div>
 
-              {isLoginMode ? (
-                // LOGIN FORM
-                <form onSubmit={handleLoginSubmit} className="space-y-4" id="login-form">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Nombre de Usuario o Apodo</label>
-                    <input 
-                      type="text" 
-                      placeholder="Ej: alexis_pasivo" 
-                      required
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:border-purple-500 focus:outline-none transition-all placeholder:text-slate-600 text-white font-semibold"
-                    />
-                  </div>
-
-                  <button 
-                    type="submit"
-                    className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold tracking-wide transition shadow-lg shadow-purple-900/30 active:scale-95 flex items-center justify-center gap-2"
-                    id="btn-login-submit"
-                  >
-                    Entrar <UserCheck size={18} />
-                  </button>
-
-                  <div className="text-center">
-                    <button 
-                      type="button" 
-                      onClick={() => setIsLoginMode(false)}
-                      className="text-sm font-semibold text-fuchsia-400 hover:underline"
-                    >
-                      ¿No tienes cuenta? Regístrate aquí
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                // SIGN UP CHOICES
-                <div className="space-y-4" id="signup-choices">
-                  <div className="space-y-3">
-                    <button 
-                      onClick={handleGoogleLogin}
-                      disabled={loading}
-                      className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold border border-slate-800 hover:border-slate-700 transition flex items-center justify-center gap-3"
-                    >
-                      {loading ? (
-                        <div className="w-5 h-5 border-2 border-fuchsia-500 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <svg className="w-5 h-5 text-red-500 fill-current" viewBox="0 0 24 24">
-                          <path d="M12.24 10.285V13.4h6.86c-.277 1.56-1.602 4.585-6.86 4.585-4.54 0-8.24-3.765-8.24-8.4s3.7-8.4 8.24-8.4c2.58 0 4.307 1.095 5.298 2.045l2.465-2.37C18.435 1.21 15.62 0 12.24 0 5.58 0 0 5.37 0 12s5.58 12 12.24 12c6.96 0 11.57-4.83 11.57-11.79 0-.795-.085-1.4-.195-1.925H12.24z"/>
-                        </svg>
-                      )}
-                      {loading ? "Cargando..." : "Continuar con Google"}
-                    </button>
-                    
-                    <div className="flex items-center my-4">
-                      <div className="flex-1 h-px bg-slate-900"></div>
-                      <span className="px-3 text-slate-600 text-xs font-bold uppercase tracking-widest">O con tu cuenta Z</span>
-                      <div className="flex-1 h-px bg-slate-900"></div>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        if (acceptedTerms) setStep(1);
-                        else alert("Por favor, acepta las políticas de privacidad y seguridad primero.");
-                      }}
-                      className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold tracking-wide transition shadow-lg shadow-purple-950/40 active:scale-[0.98]"
-                      id="btn-register-email"
-                    >
-                      Crear Cuenta Manualmente
-                    </button>
-                  </div>
-
-                  <div className="text-center pt-2">
-                    <button 
-                      onClick={() => setIsLoginMode(true)}
-                      className="text-sm font-semibold text-fuchsia-400 hover:underline"
-                    >
-                      ¿Ya tienes una cuenta? Iniciar Sesión
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* POLICIES / PRIVACY CHECKBOX (WITH ANIMATED ✔) */}
-              <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-900 space-y-3 z-10" id="terms-box">
-                <div className="flex items-start gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAcceptedTerms(!acceptedTerms)}
-                    className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                      acceptedTerms 
-                        ? "bg-fuchsia-500 border-fuchsia-400 text-white shadow-[0_0_10px_rgba(244,63,94,0.3)]" 
-                        : "border-slate-700 bg-slate-950 text-transparent hover:border-slate-500"
-                    }`}
-                    id="terms-checkbox"
-                  >
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: acceptedTerms ? 1 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                    >
-                      <CheckCircle2 size={16} className="fill-current text-white stroke-[3px]" />
-                    </motion.span>
-                  </button>
-                  <p className="text-xs text-slate-400 leading-relaxed select-none">
-                    Al continuar, declaro que tengo control de mis datos, acepto los{" "}
-                    <span className="text-fuchsia-400 font-bold hover:underline cursor-pointer">Términos del Servicio</span> y las{" "}
-                    <span className="text-indigo-400 font-bold hover:underline cursor-pointer">Políticas de Privacidad y Seguridad</span>.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 1: Conversational - What's your name? */}
-          {step === 1 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-1"
-            >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-fuchsia-400">
-                  Hola, alma libre, primero lo primero...
-                </h2>
-                <h3 className="text-xl font-bold">
-                  ¿Cómo te gustaría que te llamáramos?
-                </h3>
-                <p className="text-xs text-slate-400 leading-normal">
-                  Necesitamos saberlo para cuando haya un evento, advertencia o algo, llamarte así. No es necesario poner tu verdadero nombre, puedes usar un apodo. 😉
-                </p>
-              </div>
-
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <input 
                   type="text" 
-                  placeholder="Tu nombre o apodo cool..."
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  className="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl focus:border-purple-500 focus:outline-none text-white font-semibold placeholder:text-slate-600 text-lg"
-                  id="input-nickname"
+                  placeholder="USUARIO O EMAIL" 
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 p-5 rounded-[24px] text-white text-xs font-black placeholder:text-white/20 focus:outline-none focus:border-white/20 transition-all uppercase tracking-widest"
+                />
+                <input 
+                  type="password" 
+                  placeholder="CONTRASEÑA" 
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 p-5 rounded-[24px] text-white text-xs font-black placeholder:text-white/20 focus:outline-none focus:border-white/20 transition-all uppercase tracking-widest"
                 />
                 <button 
-                  disabled={!nickname.trim()}
-                  onClick={() => setStep(2)}
-                  className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
+                  onClick={handleLoginSubmit}
+                  className="w-full bg-white/10 border border-white/10 p-5 rounded-[24px] text-white text-xs font-black uppercase tracking-widest hover:bg-white/20 transition-all"
                 >
-                  Siguiente paso <ArrowRight size={18} />
+                  Entrar a NEXUS
                 </button>
               </div>
-            </motion.div>
-          )}
+            </div>
 
-          {/* STEP 2: Conversational - Username */}
-          {step === 2 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-2"
-            >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-indigo-400">
-                  ¡Excelente elección!
-                </h2>
-                <h3 className="text-xl font-bold">
-                  ¿Cómo quieres tu nombre de usuario?
-                </h3>
-                <p className="text-xs text-slate-400 leading-normal">
-                  Con este nombre único las demás personas te identificarán en toda la plataforma. ¡Ponle tu estilo!
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="relative">
-                  <span className="absolute left-4 top-3.5 text-slate-600 font-bold">@</span>
-                  <input 
-                    type="text" 
-                    placeholder="ej_alexis_pasivo"
-                    value={usernameInput}
-                    onChange={(e) => setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                    className="w-full pl-8 pr-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl focus:border-purple-500 focus:outline-none text-white font-semibold placeholder:text-slate-600 text-lg"
-                    id="input-username"
-                  />
-                </div>
-
-                {usernameInput && (
-                  <motion.div 
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="p-3.5 bg-indigo-950/40 rounded-xl border border-indigo-900/40 text-xs font-semibold text-indigo-300 italic flex items-center gap-2"
-                  >
-                    <Sparkles size={16} className="text-fuchsia-400 flex-shrink-0" />
-                    <span>"{selectedUsernameMsg}"</span>
-                  </motion.div>
-                )}
-
+            <div className="flex flex-col items-center gap-6">
+              <button 
+                onClick={() => setStep(11)}
+                className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] hover:text-white transition-colors"
+              >
+                ¿Nuevo aquí? Iniciar Protocolo
+              </button>
+              
+              <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10">
                 <button 
-                  disabled={!usernameInput.trim()}
-                  onClick={() => setStep(3)}
-                  className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
+                  onClick={() => setAcceptedTerms(!acceptedTerms)}
+                  className={`w-6 h-6 rounded-lg border-2 border-white/20 flex items-center justify-center transition-all ${acceptedTerms ? 'bg-white border-white' : ''}`}
                 >
-                  Continuar <ArrowRight size={18} />
+                  {acceptedTerms && <span className="text-black text-[10px] font-black">✔</span>}
                 </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 3: Goals - What would you like to find? */}
-          {step === 3 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-3"
-            >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-fuchsia-400">
-                  ¡Hola {nickname}! Let's customize...
-                </h2>
-                <h3 className="text-xl font-bold">
-                  ¿Qué te gustaría encontrar en la app?
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Selecciona una o más opciones para conectarte con gente que busque lo mismo.
+                <p className="text-[9px] text-white/30 font-bold leading-relaxed text-left uppercase tracking-tight">
+                  Al aceptar, acepta los <span className="text-white/60">términos y políticas de privacidad</span> de NEXUS.
                 </p>
               </div>
+            </div>
+          </motion.div>
+        )}
 
-              <div className="grid grid-cols-1 gap-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {goalsList.map((g) => {
-                  const isSelected = selectedGoals.includes(g.id);
-                  return (
-                    <button
-                      key={g.id}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedGoals(selectedGoals.filter(id => id !== g.id));
-                        } else {
-                          setSelectedGoals([...selectedGoals, g.id]);
-                        }
-                      }}
-                      className={`w-full p-4 rounded-xl text-left font-semibold border text-sm transition-all flex items-center justify-between ${
-                        isSelected 
-                          ? "bg-purple-900/30 border-purple-500 text-purple-200 shadow-md" 
-                          : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800"
-                      }`}
-                    >
-                      <span>{g.label}</span>
-                      {isSelected && <CheckCircle2 size={16} className="text-purple-400" />}
-                    </button>
-                  );
-                })}
+        {/* STEP 11: MANUAL EMAIL REGISTER START */}
+        {step === 11 && (
+          <motion.div key="step11" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-8 text-center">
+            <h2 className="text-4xl font-black text-white italic tracking-tighter">REGISTRO MANUAL</h2>
+            <div className="space-y-4">
+              <input 
+                type="email" 
+                placeholder="EMAIL" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 p-5 rounded-[24px] text-white text-xs font-black placeholder:text-white/20 focus:outline-none tracking-widest"
+              />
+              <input 
+                type="password" 
+                placeholder="CONTRASEÑA" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 p-5 rounded-[24px] text-white text-xs font-black placeholder:text-white/20 focus:outline-none tracking-widest"
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setStep(0)} className="p-5 bg-white/5 text-white/40 rounded-[24px] border border-white/10"><ArrowLeft size={24} /></button>
+              <button 
+                disabled={!email || !password || loading}
+                onClick={async () => {
+                   setLoading(true);
+                   try {
+                     await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+                     setStep(10);
+                   } catch (err: any) { alert(err.message); }
+                   finally { setLoading(false); }
+                }}
+                className="flex-1 py-5 bg-white text-black rounded-[32px] font-black uppercase tracking-widest"
+              >
+                Continuar
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 10: NICKNAME */}
+        {step === 10 && (
+          <motion.div key="step10" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md space-y-8 text-center px-6">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter leading-tight">
+                Hola, alma libre, primero lo primero...... ¿Cómo te gustaría que te llamáramos?
+              </h2>
+              <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest px-4">
+                Necesitamos saberlo para cuando haya un evento o advertencia o algo, llamarte así, no es necesario poner tu verdadero nombre, puedes poner un apodo etc.
+              </p>
+            </div>
+            
+            <div className="space-y-6">
+              <input 
+                type="text" 
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Escribe tu apodo aquí..."
+                className="w-full bg-white/5 border-b-2 border-white/10 p-6 text-white text-3xl font-black focus:border-white outline-none transition-all placeholder:text-white/10 uppercase"
+              />
+              <button 
+                disabled={!nickname}
+                onClick={() => setStep(12)}
+                className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] disabled:opacity-20 transition-all"
+              >
+                Siguiente Paso
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 12: USERNAME */}
+        {step === 12 && (
+          <motion.div key="step12" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-8 text-center px-6">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter leading-tight">
+                ¿Cómo quieres llamarte?
+              </h2>
+              <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest px-4">
+                Pon tu nombre de usuario aquí. Con ese nombre las demás personas te identificarán.
+              </p>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="relative">
+                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 font-black text-2xl">@</span>
+                <input 
+                  type="text" 
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                  placeholder="usuario"
+                  className="w-full bg-white/5 border border-white/10 p-6 pl-12 rounded-[32px] text-white text-2xl font-black focus:border-white outline-none transition-all placeholder:text-white/10"
+                />
               </div>
+              
+              {usernameInput && (
+                <p className="text-white/60 text-xs font-bold italic animate-pulse">
+                  {randomWelcome}
+                </p>
+              )}
 
               <button 
-                disabled={selectedGoals.length === 0}
-                onClick={() => setStep(4)}
-                className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
+                disabled={!usernameInput}
+                onClick={() => setStep(13)}
+                className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] disabled:opacity-20 transition-all"
               >
-                Siguiente <ArrowRight size={18} />
+                Continuar
               </button>
-            </motion.div>
-          )}
+            </div>
+          </motion.div>
+        )}
 
-          {/* STEP 4: Age verification and facial recognition scanner */}
-          {step === 4 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-4"
-            >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-indigo-400">
-                  Queremos protegerte
-                </h2>
-                <h3 className="text-xl font-bold">
-                  ¿Qué edad tienes? 🎂
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Por seguridad calculamos tu edad exacta. Queremos recordarla para avisarle a tus amigos en tu cumpleaños, si tú lo deseas.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex gap-2 items-center">
-                  <input 
-                    type="date" 
-                    onChange={(e) => handleDateChange(e.target.value)}
-                    value={birthDate}
-                    className="flex-1 px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl focus:border-purple-500 focus:outline-none text-white font-bold text-center"
-                  />
-                  {calculatedAge !== null && (
-                    <div className={`text-2xl font-black px-4 py-2 rounded-xl border ${
-                      calculatedAge < 18 ? "bg-red-900/20 border-red-500 text-red-400" : "bg-green-900/20 border-green-500 text-green-400"
-                    }`}>
-                      ({calculatedAge})
-                    </div>
-                  )}
-                </div>
-
-                {/* AGE EXCLUSIONS / WARNINGS */}
-                {calculatedAge !== null && calculatedAge < 13 && (
-                  <div className="p-4 bg-red-950/40 border border-red-500/50 rounded-xl text-center space-y-3">
-                    <AlertTriangle className="mx-auto text-red-500" size={32} />
-                    <p className="text-xs font-bold text-red-300">
-                      Por tu seguridad, no puedes entrar a esta app. Debes tener al menos 13 años o más.
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Te sugerimos descargar nuestra futura app "Z-Mini" ultra mega segura para menores de 12 años, la cual requerirá consentimiento legal directo de tus padres. ¡Cerrando registro!
-                    </p>
-                    <button 
-                      onClick={() => {
-                        alert("Redirigiendo a Z-Mini App Store...");
-                        window.location.reload();
-                      }}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-xs font-bold transition"
-                    >
-                      Ir a Z-Mini
-                    </button>
-                  </div>
-                )}
-
-                {calculatedAge !== null && calculatedAge >= 13 && calculatedAge < 18 && (
-                  <div className="space-y-4">
-                    <div className="p-3.5 bg-amber-950/30 border border-amber-500/40 rounded-xl text-xs space-y-2 text-amber-200">
-                      <div className="flex items-center gap-2 font-bold text-amber-400">
-                        <AlertTriangle size={16} />
-                        <span>¡Advertencia ⚠️! Eres menor de edad</span>
-                      </div>
-                      <p className="leading-relaxed text-[11px]">
-                        Por tu seguridad te recomendamos que al terminar de crear tu cuenta, aceptes que tus padres o tutor legal observen tu cuenta.
-                      </p>
-                      
-                      <div className="flex flex-col gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setAdultMonitoringOption("parent")}
-                          className={`p-2.5 rounded-lg border text-left font-semibold text-xs transition-all ${
-                            adultMonitoringOption === "parent" 
-                              ? "bg-amber-500/20 border-amber-400 text-white" 
-                              : "bg-slate-900/50 border-slate-800 text-slate-400 hover:bg-slate-900"
-                          }`}
-                        >
-                          🟢 Seguir creando la cuenta (con monitoreo de tutor)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdultMonitoringOption("aimea")}
-                          className={`p-2.5 rounded-lg border text-left font-semibold text-xs transition-all ${
-                            adultMonitoringOption === "aimea" 
-                              ? "bg-amber-500/20 border-amber-400 text-white" 
-                              : "bg-slate-900/50 border-slate-800 text-slate-400 hover:bg-slate-900"
-                          }`}
-                        >
-                          🔴 Seguir creándola sin adulto (Monitoreo de IA IMEA)
-                        </button>
-                      </div>
-                    </div>
-
-                    {adultMonitoringOption === "aimea" && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="p-3 bg-purple-950/20 border border-purple-500/30 rounded-xl text-[11px] leading-relaxed text-purple-300 space-y-2"
-                      >
-                        <p className="font-bold">🔐 Monitoreo de Seguridad de IA:</p>
-                        <p>
-                          ¡No te preocupes! Al salir de la app, la asistente AI monitoreará la cuenta por seguridad. Tus fotos, chats, audios y gustos no serán vistos por ninguna persona física ni siquiera el creador de la app.
-                        </p>
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-
-                {/* CAMERA BIOMETRIC SCANNER (REQUIRED FOR BOTH) */}
-                {calculatedAge !== null && calculatedAge >= 13 && (
-                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 text-center">
-                    <div className="flex items-center justify-center gap-2 text-indigo-400 font-bold text-sm">
-                      <Camera size={18} />
-                      <span>Confirmación de Edad Biométrica</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-normal">
-                      {calculatedAge >= 18 
-                        ? "Confirmaremos facialmente en 10 segundos tu adultez para permitir contenido +18." 
-                        : "Escanearemos rápidamente para asegurar que tu edad coincide con la fecha declarada."}
-                    </p>
-
-                    {camCountdown === null && !camSuccess && (
-                      <button
-                        onClick={startCameraScan}
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition"
-                      >
-                        Iniciar Escaneo Facial (Cámara)
-                      </button>
-                    )}
-
-                    {camCountdown !== null && (
-                      <div className="space-y-2">
-                        {/* Video feedback simulation */}
-                        <div className="w-full h-44 bg-slate-950 rounded-lg relative overflow-hidden flex items-center justify-center border border-purple-500/30">
-                          {stream ? (
-                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
-                          ) : (
-                            <div className="text-center space-y-2 text-slate-600">
-                              <UserCheck size={40} className="mx-auto animate-bounce text-purple-500/70" />
-                              <span className="text-[10px] uppercase tracking-widest font-mono">Simulando Video de Cámara</span>
-                            </div>
-                          )}
-                          {/* Laser scanning line */}
-                          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-[scan_2s_infinite] shadow-[0_0_12px_#a855f7]" />
-                          
-                          <div className="absolute bottom-2 right-2 bg-slate-900/80 px-2 py-1 rounded text-xs font-mono text-purple-400">
-                            PROCESANDO: {camCountdown}s
-                          </div>
-                        </div>
-                        <p className="text-xs text-purple-400 font-medium">Analizando rasgos faciales en tiempo real...</p>
-                      </div>
-                    )}
-
-                    {camSuccess && (
-                      <div className="p-3 bg-green-950/30 border border-green-500/30 rounded-lg text-xs text-green-400 flex items-center justify-center gap-2">
-                        <CheckCircle2 size={16} />
-                        <span className="font-bold">¡Verificación Facial Correcta! Rostro validado.</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SUBMIT STEP */}
-                {calculatedAge !== null && calculatedAge >= 13 && (
-                  <button 
-                    disabled={!camSuccess || (calculatedAge < 18 && !adultMonitoringOption)}
-                    onClick={() => setStep(5)}
-                    className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
-                  >
-                    Confirmar Edad e Identidad <ArrowRight size={18} />
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 5: Sexual Orientation & Gender Identity (Inclusive) */}
-          {step === 5 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-5"
-              key="step-5"
-            >
-              {/* Headings and background graphics description */}
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-fuchsia-400">
-                  Aquí todos somos aceptados
-                </h2>
-                <h3 className="text-lg font-bold">
-                  ¿Con cuál de estos te identificas? 🏳️‍🌈✨
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Z App es una zona libre de odio. Tu orientación nos ayuda a encontrarte gente afín. Puedes elegir mantenerla pública o privada.
-                </p>
-              </div>
-
-              {/* Doubtful/Thinking people illustrative backdrop container */}
-              <div className="p-3 bg-slate-900/40 rounded-xl border border-slate-900 flex items-center gap-3">
-                <div className="text-2xl">🤔💭🙋‍♀️🙋‍♂️</div>
-                <p className="text-[11px] text-slate-400 leading-normal">
-                  No importa de dónde vengas ni cómo ames. Queremos que te sientas cómodo. Elige libremente.
-                </p>
-              </div>
-
-              {/* Grid of Orientations */}
-              <div className="grid grid-cols-3 gap-1.5 max-h-[180px] overflow-y-auto pr-1">
-                {orientationList.map((or) => (
-                  <button
-                    key={or}
-                    onClick={() => setOrientation(or)}
-                    className={`p-2.5 rounded-lg border text-xs font-bold text-center transition-all ${
-                      orientation === or 
-                        ? "bg-gradient-to-tr from-fuchsia-600 to-purple-600 border-fuchsia-400 text-white" 
-                        : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800"
-                    }`}
-                  >
-                    {or}
-                  </button>
-                ))}
+        {/* STEP 13: INTERESTS */}
+        {step === 13 && (
+          <motion.div key="step13" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-8 text-center">
+            <div className="space-y-2">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-tight">¿Qué te gustaría encontrar en la app?</h2>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 px-4 h-[350px] overflow-y-auto no-scrollbar">
+              {[
+                "Crear historias", "Ver series y películas", "Regar plantas", "Escribir", "Leer", 
+                "Ayudar personas", "Trabajar", "Jugar al aire libre", "Estudiar", "Comer", 
+                "Hacer ejercicio", "Limpiar", "Escuchar Música", "Ver TikTok", "Relaciones", "Amistad"
+              ].map(item => (
                 <button
-                  onClick={() => setOrientation("Prefiero no decirlo")}
-                  className={`col-span-3 p-2.5 rounded-lg border text-xs font-bold text-center transition-all ${
-                    orientation === "Prefiero no decirlo" 
-                      ? "bg-purple-900/40 border-purple-500 text-white" 
-                      : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800"
+                  key={item}
+                  onClick={() => {
+                    if (hobbies.includes(item)) setHobbies(hobbies.filter(h => h !== item));
+                    else setHobbies([...hobbies, item]);
+                  }}
+                  className={`p-4 rounded-[24px] text-[10px] font-black uppercase tracking-widest border transition-all ${
+                    hobbies.includes(item) ? 'bg-white text-black border-white' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
                   }`}
                 >
-                  Prefiero no decirlo
+                  {item}
                 </button>
+              ))}
+            </div>
+
+            <div className="px-4">
+              <button 
+                onClick={() => setStep(14)}
+                className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] transition-all"
+              >
+                Siguiente
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 14: AGE */}
+        {step === 14 && (
+          <motion.div key="step14" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-md space-y-8 text-center px-6">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">¿Qué edad tienes?</h2>
+              <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest px-4 leading-relaxed">
+                Queremos saberlo para en un futuro avisarle a tus amigos o personas que es tu cumpleaños, si usted desea, claro.
+              </p>
+            </div>
+
+            <div className="space-y-8">
+              <div className="relative inline-block">
+                <input 
+                  type="date" 
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="bg-white/5 border border-white/10 p-8 rounded-[40px] text-white text-2xl font-black focus:border-white outline-none transition-all uppercase tracking-widest"
+                />
+                {calculatedAge !== null && (
+                  <div className={`absolute -top-4 -right-4 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black border-4 ${calculatedAge < 18 ? 'bg-red-500 border-red-200 text-white animate-bounce' : 'bg-green-500 border-green-200 text-white'}`}>
+                    ({calculatedAge})
+                  </div>
+                )}
               </div>
 
-              {orientation && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="p-3.5 bg-fuchsia-950/20 border border-fuchsia-500/30 rounded-xl text-xs font-semibold text-fuchsia-300 flex items-start gap-2.5"
-                >
-                  <Heart size={16} className="text-fuchsia-500 flex-shrink-0 mt-0.5" />
-                  <p>{getOrientationMsg(orientation)}</p>
+              {calculatedAge !== null && calculatedAge < 13 && (
+                <div className="text-red-500 font-black uppercase text-sm animate-pulse">Por tu seguridad, no puedes entrar a esta app si eres menor de 13 años.</div>
+              )}
+
+              {calculatedAge !== null && calculatedAge >= 13 && calculatedAge < 18 && (
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-red-500/10 border border-red-500/20 p-8 rounded-[40px] space-y-6">
+                  <div className="flex justify-center text-red-500">
+                    <AlertTriangle size={48} />
+                  </div>
+                  <h3 className="text-red-500 font-black uppercase tracking-[0.2em] text-sm">¡Advertencia! Eres menor de edad</h3>
+                  <p className="text-white/60 text-xs font-bold leading-relaxed px-4">
+                    Por tu seguridad te recomiendo que al terminar de crear tu cuenta, aceptes que tus padres o tutor legal observen tu cuenta.
+                  </p>
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => { setAdultMonitoringOption("parent"); setStep(15); }}
+                      className="w-full p-5 bg-white text-black rounded-[24px] font-black uppercase text-[10px] tracking-widest"
+                    >
+                      Seguir creando la cuenta con un Padre o tutor legal
+                    </button>
+                    <button 
+                      onClick={() => { setAdultMonitoringOption("ai"); setStep(15); }}
+                      className="w-full p-5 bg-white/5 border border-white/10 text-white/40 rounded-[24px] font-black uppercase text-[10px] tracking-widest"
+                    >
+                      Seguir creándola pero sin que un adulto la monitoree (IMEA actuará)
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
-              {/* Privacy Toggle */}
-              <div className="flex items-center justify-between p-3.5 bg-slate-900 rounded-xl border border-slate-800">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-bold">Mostrar orientación en perfil</span>
-                  <p className="text-[10px] text-slate-500">Permite que otros usuarios la vean para conocerte mejor.</p>
+              {calculatedAge !== null && calculatedAge >= 18 && (
+                <button 
+                  onClick={() => setStep(15)}
+                  className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] transition-all"
+                >
+                  Confirmar Edad
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 15: CAMERA VERIFICATION */}
+        {step === 15 && (
+          <motion.div key="step15" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-md space-y-8 text-center px-6">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">VERIFICACIÓN FACIAL</h2>
+              <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest px-4 leading-relaxed">
+                En 10 segundos se abrirá la cámara para confirmar que tu rostro coincide con la edad declarada.
+              </p>
+            </div>
+
+            <div className="relative aspect-square w-full max-w-[300px] mx-auto overflow-hidden rounded-[60px] bg-white/5 border border-white/10">
+              {cameraActive ? (
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover grayscale brightness-125" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/10">
+                  <Camera size={64} />
                 </div>
+              )}
+              {cameraCountdown > 0 && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                  <span className="text-8xl font-black text-white italic animate-ping">{cameraCountdown}</span>
+                </div>
+              )}
+            </div>
+
+            {!cameraActive && cameraCountdown === 0 && (
+              <button 
+                onClick={startCameraVerification}
+                className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] transition-all"
+              >
+                Sincronizar Rasgos
+              </button>
+            )}
+          </motion.div>
+        )}
+
+        {/* STEP 16: ORIENTATION */}
+        {step === 16 && (
+          <motion.div key="step16" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-md space-y-8 text-center">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-tight px-6">
+                Queremos un lugar cómodo y libre de odio para ti, ¿con cuál de éstos te identificas?
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 px-6 h-[350px] overflow-y-auto no-scrollbar">
+              {ORIENTATIONS.map(opt => (
                 <button
-                  onClick={() => setIsOrientationPublic(!isOrientationPublic)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                    isOrientationPublic ? "bg-green-600/20 border border-green-500/50 text-green-300" : "bg-slate-800 text-slate-400 border border-slate-700"
+                  key={opt}
+                  onClick={() => setOrientation(opt)}
+                  className={`p-5 rounded-[32px] text-[10px] font-black uppercase tracking-widest border transition-all ${
+                    orientation === opt ? 'bg-white text-black border-white scale-95 shadow-xl shadow-white/10' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
                   }`}
                 >
-                  {isOrientationPublic ? (
-                    <>
-                      <Eye size={12} /> Público
-                    </>
-                  ) : (
-                    <>
-                      <EyeOff size={12} /> Privado
-                    </>
-                  )}
+                  {opt}
                 </button>
-              </div>
+              ))}
+              <button
+                onClick={() => setOrientation("Prefiero no decirlo")}
+                className={`p-5 rounded-[32px] text-[10px] font-black uppercase tracking-widest border transition-all col-span-2 ${
+                  orientation === "Prefiero no decirlo" ? 'bg-white text-black border-white' : 'bg-white/5 text-white/40 border-white/10'
+                }`}
+              >
+                Prefiero no decirlo
+              </button>
+            </div>
 
+            <AnimatePresence>
+              {orientation && orientation !== "Prefiero no decirlo" && (
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="px-8 py-4 bg-white/5 border-y border-white/10">
+                  <p className="text-white font-bold text-xs italic">"{ORIENTATION_MESSAGES[orientation]}"</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="px-6 flex items-center gap-4">
+               <button 
+                onClick={() => setIsOrientationPublic(!isOrientationPublic)}
+                className={`flex-1 py-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest transition-all ${isOrientationPublic ? 'bg-white/10 border-white/20 text-white' : 'bg-transparent border-white/10 text-white/30'}`}
+              >
+                {isOrientationPublic ? 'Público' : 'Privado'}
+              </button>
               <button 
                 disabled={!orientation}
-                onClick={() => setStep(6)}
-                className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
+                onClick={() => setStep(17)}
+                className="flex-[2] py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-[0.2em] disabled:opacity-20 transition-all"
               >
-                Continuar <ArrowRight size={18} />
+                Continuar
               </button>
-            </motion.div>
-          )}
+            </div>
+          </motion.div>
+        )}
 
-          {/* STEP 6: Interests and Hobbies selection */}
-          {step === 6 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-6"
+        {/* STEP 17: FINAL PHOTO & FINISH */}
+        {step === 17 && (
+          <motion.div key="step17" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-md space-y-8 text-center px-6">
+            <div className="space-y-4">
+              <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">FOTO DE PERFIL</h2>
+              <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest px-4">Puedes crear tu personaje estilo "Z-avatar" o usar tu cara real.</p>
+            </div>
+
+            <div className="relative mx-auto w-48 h-48 rounded-[60px] overflow-hidden border-4 border-white/20 bg-white/5 group transition-all">
+              <img src={profilePic} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <ImageIcon className="text-white" size={32} />
+              </div>
+              <input 
+                type="file" 
+                accept="image/*"
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setProfilePic(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </div>
+
+            <button 
+              onClick={handleFinalizeRegister}
+              className="w-full py-8 bg-white text-black rounded-[40px] font-black text-xl uppercase tracking-[0.3em] shadow-[0_20px_50px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all"
             >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-indigo-400">
-                  ¡Casi listos!
-                </h2>
-                <h3 className="text-xl font-bold">
-                  ¿Qué tipo de cosas te gustan hacer? 🌿📖
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Selecciona tus hobbies para que otros usuarios con los mismos gustos busquen tu contenido fácilmente.
-                </p>
-              </div>
+              Iniciar mi Realidad
+            </button>
+          </motion.div>
+        )}
 
-              {/* Hobbies Selection */}
-              <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
-                {standardHobbies.map((h) => {
-                  const isSelected = hobbies.includes(h);
-                  return (
-                    <button
-                      key={h}
-                      onClick={() => {
-                        if (isSelected) {
-                          setHobbies(hobbies.filter(x => x !== h));
-                        } else {
-                          setHobbies([...hobbies, h]);
-                        }
-                      }}
-                      className={`p-2.5 rounded-lg text-left text-xs font-semibold border transition-all ${
-                        isSelected 
-                          ? "bg-indigo-950/40 border-indigo-500 text-white" 
-                          : "bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800"
-                      }`}
-                    >
-                      {h}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom hobby writer option */}
-              <div className="space-y-2">
-                {!showCustomHobbyInput ? (
-                  <button
-                    onClick={() => setShowCustomHobbyInput(true)}
-                    className="text-xs text-fuchsia-400 hover:underline font-bold"
-                  >
-                    ✍️ ¿No encuentras lo tuyo? Descríbelo tú mismo
-                  </button>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Escribe tu hobby..."
-                      value={customHobby}
-                      onChange={(e) => setCustomHobby(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
-                    />
-                    <button
-                      onClick={() => {
-                        if (customHobby.trim()) {
-                          setHobbies([...hobbies, customHobby.trim()]);
-                          setCustomHobby("");
-                          setShowCustomHobbyInput(false);
-                        }
-                      }}
-                      className="px-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-bold"
-                    >
-                      Añadir
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Privacy Choice */}
-              <div className="flex items-center justify-between p-3.5 bg-slate-900 rounded-xl border border-slate-800">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-bold">Mantener hobbies públicos</span>
-                  <p className="text-[10px] text-slate-500">Muestra tus gustos en tu perfil para encontrar amigos.</p>
-                </div>
-                <button
-                  onClick={() => setIsHobbiesPublic(!isHobbiesPublic)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                    isHobbiesPublic ? "bg-green-600/20 border border-green-500/50 text-green-300" : "bg-slate-800 text-slate-400 border border-slate-700"
-                  }`}
-                >
-                  {isHobbiesPublic ? <Eye size={12} /> : <EyeOff size={12} />}
-                  {isHobbiesPublic ? "Público" : "Privado"}
-                </button>
-              </div>
-
-              <button 
-                disabled={hobbies.length === 0}
-                onClick={() => setStep(7)}
-                className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg"
-              >
-                Paso Final <ArrowRight size={18} />
-              </button>
-            </motion.div>
-          )}
-
-          {/* STEP 7: Profile Photo / Custom Avatar AI checked */}
-          {step === 7 && (
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-6"
-              key="step-7"
+        {/* STEP 9: FINAL ANIMATION */}
+        {step === 9 && (
+          <motion.div key="step9" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black flex flex-col items-center justify-center z-[100]">
+            <motion.div 
+              initial={{ scale: 0.5, rotate: -20, opacity: 0 }}
+              animate={{ 
+                scale: [1, 1.2, 1], 
+                rotate: [0, 5, -5, 0],
+                opacity: 1
+              }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="w-48 h-48 bg-gradient-to-br from-purple-500 to-pink-500 rounded-[60px] flex items-center justify-center shadow-[0_0_100px_rgba(168,85,247,0.5)] border-4 border-white/20"
             >
-              <div className="space-y-2">
-                <h2 className="text-2xl font-extrabold text-fuchsia-400">
-                  ¡La foto de portada!
-                </h2>
-                <h3 className="text-xl font-bold">
-                  Sube tu foto de perfil 🖼️✨
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Crea tu personaje estilo "Z-avatar" o selecciona una foto de tu galería.
-                </p>
-              </div>
-
-              {/* Warning rule */}
-              <div className="p-3 bg-red-950/20 border border-red-500/30 rounded-xl text-[11px] leading-relaxed text-red-300">
-                ⚠️ <span className="font-bold">Reglas de la app:</span> Por seguridad y moderación, no se permiten fotos semidesnudas, en paños menores, gore, drogas, violencia, etc. La foto será verificada automáticamente por el sistema antes de publicar (nadie más podrá ver esta verificación).
-              </div>
-
-              {/* Selector */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setAvatarOption("avatar")}
-                  className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
-                    avatarOption === "avatar" ? "bg-purple-600 border-purple-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400"
-                  }`}
-                >
-                  Crear Z-Avatar
-                </button>
-                <button
-                  onClick={() => setAvatarOption("gallery")}
-                  className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
-                    avatarOption === "gallery" ? "bg-purple-600 border-purple-500 text-white" : "bg-slate-900 border-slate-800 text-slate-400"
-                  }`}
-                >
-                  Subir de Galería
-                </button>
-              </div>
-
-              {/* Avatar picker simulation */}
-              <div className="flex flex-col items-center gap-4">
-                <div className="relative">
-                  <div className="w-24 h-24 rounded-full border-4 border-fuchsia-500 overflow-hidden shadow-xl bg-slate-900">
-                    <img src={selectedAvatarPic} alt="Selected profile" className="w-full h-full object-cover" />
-                  </div>
-                  {verifyingPic && (
-                    <div className="absolute inset-0 bg-slate-950/80 rounded-full flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-fuchsia-400 animate-pulse">VERIFICANDO...</span>
-                    </div>
-                  )}
-                  {isPicVerified && !verifyingPic && (
-                    <div className="absolute bottom-0 right-0 bg-green-500 text-white p-1 rounded-full border-2 border-slate-950">
-                      <ShieldCheck size={16} />
-                    </div>
-                  )}
-                </div>
-
-                {avatarOption === "avatar" ? (
-                  <div className="space-y-2 text-center w-full">
-                    <span className="text-xs text-slate-400">Elige tu estilo preestablecido:</span>
-                    <div className="flex justify-center gap-2">
-                      {avatars.map((av, index) => (
-                        <button
-                          key={index}
-                          onClick={() => {
-                            setSelectedAvatarPic(av);
-                            verifyImageSafety();
-                          }}
-                          className={`w-10 h-10 rounded-full overflow-hidden border-2 transition-all ${
-                            selectedAvatarPic === av ? "border-fuchsia-500 scale-110" : "border-slate-800 hover:border-slate-600"
-                          }`}
-                        >
-                          <img src={av} alt="Avatar opt" className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-800 border-dashed rounded-xl cursor-pointer bg-slate-900 hover:bg-slate-800/80 transition-all">
-                      <div className="flex flex-col items-center justify-center pt-4 pb-4">
-                        <ImageIcon size={24} className="text-slate-500 mb-2" />
-                        <p className="text-xs text-slate-400 font-bold">Seleccionar archivo de tu dispositivo</p>
-                        <p className="text-[9px] text-slate-600 mt-1">Soporta PNG, JPG, GIF</p>
-                      </div>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const url = URL.createObjectURL(file);
-                            setSelectedAvatarPic(url);
-                            verifyImageSafety();
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <button 
-                disabled={!isPicVerified || verifyingPic}
-                onClick={handleFinalizeRegister}
-                className="w-full py-4 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30"
-              >
-                ¡Crear Mi Cuenta! ✨ <ArrowRight size={18} />
-              </button>
+              <span className="text-white text-9xl font-black italic tracking-tighter">Z</span>
             </motion.div>
-          )}
-
-          {/* STEP 8: HUGE Z CREATION SUCCESS ANIMATION */}
-          {step === 8 && (
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-center space-y-8 py-12 flex flex-col items-center justify-center"
-              key="step-8"
+            <motion.h2 
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mt-12 text-4xl font-black text-white tracking-tighter uppercase"
             >
-              {/* Massive nebulous Z container */}
-              <div className="relative flex items-center justify-center w-48 h-48 rounded-full border-4 border-fuchsia-500/30 bg-purple-950/20 shadow-[0_0_50px_rgba(168,85,247,0.3)]" id="giant-z-frame">
-                {/* Simulated spinning nebula border */}
-                <div className="absolute inset-0 rounded-full border-t-4 border-b-4 border-fuchsia-500 animate-[spin_4s_linear_infinite]" />
-                <div className="absolute inset-2 rounded-full border-r-4 border-l-4 border-indigo-500 animate-[spin_6s_linear_infinite]" />
-                
-                {/* The glowing Big Z */}
-                <span className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-tr from-fuchsia-400 via-purple-500 to-indigo-400 select-none animate-[pulse_1.5s_infinite]">
-                  Z
-                </span>
-              </div>
-
-              <div className="space-y-2 animate-bounce">
-                <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-400 to-indigo-400">
-                  ¡GENIAL, TU CUENTA HA SIDO CREADA!
-                </h1>
-                <p className="text-slate-400 text-sm font-semibold max-w-xs mx-auto">
-                  Bienvenido a la revolución social de la Generación Z. Redirigiéndote al feed principal...
-                </p>
-              </div>
-            </motion.div>
-          )}
-
-        </AnimatePresence>
-      </div>
-
-      {/* Footer Branding */}
-      <div className="w-full text-center py-4 z-10" id="reg-footer">
-        <p className="text-[10px] text-slate-600 font-mono tracking-widest uppercase">
-          Z APP • SECURE WORKSPACE PLATFORM 2026
-        </p>
-      </div>
+              ¡GENIAL, TU CUENTA HA SIDO CREADA!
+            </motion.h2>
+            <p className="mt-4 text-white/40 font-black uppercase tracking-[0.4em] animate-pulse italic">NEXUS PROTOCOL READY</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

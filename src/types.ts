@@ -8,7 +8,7 @@ export interface User {
   age: number;
   orientation: string;
   isOrientationPublic: boolean;
-  profilePic: string; // Avatar URL or base64 or custom code
+  profilePic: string; // Avatar URL
   bio: string;
   isAdult: boolean;
   isParentMonitored: boolean;
@@ -21,13 +21,6 @@ export interface User {
   currentSkin?: string;
   followers: string[];
   following: string[];
-  note?: UserNote;
-}
-
-export interface UserNote {
-  text: string;
-  backgroundColor: string;
-  createdAt: string;
 }
 
 export interface Comment {
@@ -48,46 +41,42 @@ export interface Post {
   authorPic: string;
   authorAge: number;
   authorIsAdult: boolean;
-  type: "image" | "video" | "text";
-  url: string;
+  contentType: "image" | "video" | "text";
+  mediaUrl: string;
   caption: string;
-  hashtags: string[];
+  tags: string[];
   category: string;
   privacy: "public" | "friends" | "minors" | "majors" | "private";
-  commentsEnabled: boolean;
-  sharesEnabled: boolean;
-  downloadsEnabled: boolean;
-  likes: string[]; // User IDs who liked
-  comments: Comment[];
-  sharesCount: number;
-  savesCount: number;
-  viewsCount: number;
-  isPinned?: boolean;
-  isArchived?: boolean;
-  createdAt: string;
-  stats?: {
+  allowComments: boolean;
+  allowSharing: boolean;
+  allowDownloads: boolean;
+  likes: string[]; // User IDs
+  stats: {
     views: number;
     likes: number;
     comments: number;
     shares: number;
     saves: number;
-    minorsViews: number;
-    adultsViews: number;
-    avgWatchTime: number; // in seconds
+    minorsViews?: number;
+    adultsViews?: number;
+    avgWatchTime?: number;
   };
+  comments?: Comment[];
+  isPinned?: boolean;
+  isArchived?: boolean;
+  createdAt: string;
 }
 
-export interface ClubMessage {
+export interface ChatMessage {
   id: string;
-  clubId: string;
   senderId: string;
   senderName: string;
   senderPic: string;
   senderAge: number;
-  type: "text" | "image" | "voice" | "sticker";
-  content: string; // message text, image url, audio base64, sticker id
-  duration?: number; // for audio
-  reactions?: { [emoji: string]: string[] }; // emoji -> array of userIds
+  type: "text" | "image" | "voice" | "sticker" | "video";
+  content: string;
+  clubId?: string;
+  duration?: number;
   createdAt: string;
 }
 
@@ -101,18 +90,17 @@ export interface Club {
   is18Plus: boolean;
   privacy: "public" | "private";
   creatorId: string;
-  admins: string[]; // List of user IDs
-  members: string[]; // List of user IDs
-  pendingRequests: string[]; // User IDs who requested to join
-  chatMessages: ClubMessage[];
-  // Permissions set by admin
+  admins: string[];
+  members: string[];
+  pendingRequests: string[];
+  chatMessages: ChatMessage[];
   allowAllToMessage: boolean;
   allowMedia: boolean;
   allowStickers: boolean;
   allowVoiceNotes: boolean;
   allowVideos30s: boolean;
   bannedWords: string[];
-  reports: { reporterId: string; reason: string; messageId?: string; createdAt: string }[];
+  reports?: any[];
   inviteLink: string;
 }
 
@@ -133,48 +121,13 @@ export interface ChatRequest {
   createdAt: string;
 }
 
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  text: string;
-  type: "text" | "image" | "voice" | "sticker";
-  duration?: number;
-  createdAt: string;
-}
-
 export interface Chat {
   id: string;
   user1Id: string;
   user2Id: string;
   messages: ChatMessage[];
-  isConfessed?: boolean; // triggers love emoji/hearts and relationship status if mutual
+  isConfessed?: boolean;
   relationshipPublished?: "public" | "private" | "none";
-}
-
-export interface History {
-  id: string;
-  authorId: string;
-  authorName: string;
-  authorPic: string;
-  type: "image" | "video";
-  url: string;
-  text: string;
-  textStyle: string; // e.g., 'sans', 'serif', 'mono', 'neon'
-  textColor: string;
-  createdAt: string; // Expires after 24h
-}
-
-export interface AppNotification {
-  id: string;
-  type: "system" | "like" | "comment" | "follow" | "chat_request" | "club_request" | "event";
-  title: string;
-  content: string;
-  isRedDot: boolean;
-  senderId?: string;
-  senderName?: string;
-  senderPic?: string;
-  targetId?: string; // clubId, postId, etc.
-  createdAt: string;
 }
 
 export interface Story {
@@ -185,6 +138,7 @@ export interface Story {
   mediaUrl: string;
   textOverlay: string;
   createdAt: string;
+  expiresAt: string;
   viewsCount: number;
 }
 
@@ -196,5 +150,18 @@ export interface Note {
   text: string;
   bgColor: string;
   createdAt: string;
+  expiresAt: string;
 }
 
+export interface AppNotification {
+  id: string;
+  type: "system" | "like" | "comment" | "follow" | "chat_request" | "club_request" | "event";
+  title: string;
+  content: string;
+  isRedDot: boolean;
+  senderId?: string;
+  senderName?: string;
+  senderPic?: string;
+  targetId?: string;
+  createdAt: string;
+}
